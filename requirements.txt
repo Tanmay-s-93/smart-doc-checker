@@ -8,4 +8,5 @@ python-magic-bin
 Flask-Limiter
 Flask-Cors
 Werkzeug
+filetype
 gunicorn
