@@ -181,7 +181,11 @@
         // Event Listeners
         browseBtn.addEventListener('click', () => fileInput.click());
         dropzone.addEventListener('click', () => fileInput.click());
-        fileInput.addEventListener('change', () => handleFiles(fileInput.files));
+        fileInput.addEventListener('change', (e) => {
+            handleFiles(e.target.files);
+            // Reset the file input to allow selecting the same file again
+            fileInput.value = '';
+        });
         
         dropzone.addEventListener('dragover', (e) => {
             e.preventDefault();
@@ -212,7 +216,11 @@
                 }
             }
             
-            files.push(...newFiles);
+            // Add files to our array
+            for (let i = 0; i < newFiles.length; i++) {
+                files.push(newFiles[i]);
+            }
+            
             updateFileList();
         }
 
@@ -248,7 +256,6 @@
         uploadForm.addEventListener('submit', async function(e) {
             e.preventDefault();
             
-            // Optional: Add validation here
             if (files.length < 2) {
                 showError('Please upload at least 2 documents.');
                 return;
