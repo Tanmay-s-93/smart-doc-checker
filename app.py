@@ -5,13 +5,14 @@ from docx import Document
 from dotenv import load_dotenv
 import google.generativeai as genai
 from werkzeug.utils import secure_filename
-import filetype  # Replaced python-magic with the more reliable filetype library
+import filetype
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_cors import CORS
 import logging
 from logging.handlers import RotatingFileHandler
 import time
+import concurrent.futures # Import for parallel processing
 
 # Load environment variables
 load_dotenv()
@@ -70,20 +71,15 @@ def allowed_file(filename):
 def validate_file_type(file_stream, filename):
     """Validate file type using the filetype library"""
     try:
-        # Read the first 261 bytes, which is what filetype needs
         header = file_stream.read(261)
-        file_stream.seek(0)  # Reset stream position
-
+        file_stream.seek(0)
         kind = filetype.guess(header)
         if kind is None:
             return False
-
         if filename.endswith('.pdf'):
             return kind.mime == 'application/pdf'
         elif filename.endswith('.docx'):
-            # MIME type for .docx is application/vnd.openxmlformats-officedocument.wordprocessingml.document
             return kind.mime == 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-
         return False
     except Exception as e:
         app.logger.error(f"Error validating file type: {str(e)}")
@@ -206,52 +202,56 @@ def analyze_documents():
     if not os.getenv("GOOGLE_API_KEY"):
         return jsonify({'error': 'Google API key not configured. Please contact administrator.'}), 500
         
-    file1 = request.files.get('file1')
-    file2 = request.files.get('file2')
-    file3 = request.files.get('file3')
-
-    if not file1 or not file2 or file1.filename == '' or file2.filename == '':
+    files = [request.files.get('file1'), request.files.get('file2'), request.files.get('file3')]
+    
+    if not files[0] or not files[1] or files[0].filename == '' or files[1].filename == '':
         return jsonify({'error': 'Please upload at least two documents.'}), 400
 
-    files_to_check = [(file1, 'file1'), (file2, 'file2')]
-    if file3 and file3.filename != '':
-        files_to_check.append((file3, 'file3'))
-    
-    for file, field_name in files_to_check:
-        if file and file.filename:
-            filename = secure_filename(file.filename)
-            
-            if not allowed_file(filename):
-                return jsonify({'error': f"Invalid file extension for {filename}. Only PDF and DOCX are allowed."}), 400
-            
-            if not validate_file_type(file.stream, filename):
-                return jsonify({'error': f"Invalid file content for {filename}. The file is not a valid PDF or DOCX."}), 400
-            
-            file.stream.seek(0)
-    
+    # --- PERFORMANCE OPTIMIZATION ---
+    # Process file validation and text extraction in parallel
+    texts = []
     try:
-        text1 = extract_text_from_file(file1)
-        text2 = extract_text_from_file(file2)
-        text3 = extract_text_from_file(file3) if file3 and file3.filename != '' else ""
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            # Validate files first
+            validation_futures = {executor.submit(validate_file_type, f.stream, secure_filename(f.filename)): f for f in files if f and f.filename}
+            for future in concurrent.futures.as_completed(validation_futures):
+                file = validation_futures[future]
+                if not future.result():
+                    return jsonify({'error': f"Invalid file content for {secure_filename(file.filename)}. The file is not a valid PDF or DOCX."}), 400
+                file.stream.seek(0) # Reset stream after validation
 
-        if not text1.strip() or not text2.strip():
-            return jsonify({'error': 'Could not extract text from one or more documents. They might be scanned images or encrypted.'}), 400
+            # Extract text in parallel
+            extraction_futures = {executor.submit(extract_text_from_file, f): f for f in files if f and f.filename}
+            results = {}
+            for future in concurrent.futures.as_completed(extraction_futures):
+                file = extraction_futures[future]
+                # Store results in a way we can order them later
+                results[file.filename] = future.result()
 
-        report = find_contradictions(text1, text2, text3)
-        
-        usage_data['reports_generated'] += 1
-        
-        return jsonify({
-            'report': report, 
-            'usage_count': usage_data['reports_generated'],
-            'document1_length': len(text1),
-            'document2_length': len(text2),
-            'document3_length': len(text3) if text3 else 0
-        })
+            # Order the extracted texts correctly
+            text1 = results.get(files[0].filename, "")
+            text2 = results.get(files[1].filename, "")
+            text3 = results.get(files[2].filename, "") if files[2] and files[2].filename else ""
 
     except Exception as e:
-        app.logger.error(f"Analysis error: {str(e)}")
+        app.logger.error(f"Analysis error during file processing: {str(e)}")
         return jsonify({'error': str(e)}), 500
+    # --------------------------------
+
+    if not text1.strip() or not text2.strip():
+        return jsonify({'error': 'Could not extract text from one or more required documents.'}), 400
+
+    report = find_contradictions(text1, text2, text3)
+    
+    usage_data['reports_generated'] += 1
+    
+    return jsonify({
+        'report': report, 
+        'usage_count': usage_data['reports_generated'],
+        'document1_length': len(text1),
+        'document2_length': len(text2),
+        'document3_length': len(text3) if text3 else 0
+    })
 
 # --- Error Handlers ---
 @app.errorhandler(413)
