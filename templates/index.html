@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Doc Checker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://unpkg.com/aos@2.3.1/dist/aos.css" rel="stylesheet">
+    <script src="https://unpkg.com/aos@2.3.1/dist/aos.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/feather-icons/dist/feather.min.js"></script>
+    <style>
+        .gradient-bg {
+            background: linear-gradient(135deg, #6B73FF 0%, #000DFF 100%);
+        }
+        .file-upload {
+            border: 2px dashed #CBD5E0;
+            transition: all 0.3s ease;
+        }
+        .file-upload:hover, .file-upload.dragover {
+            border-color: #6B73FF;
+            background-color: #F8FAFC;
+        }
+        .conflict-card {
+            border-left: 4px solid #EF4444;
+        }
+        .suggestion-card {
+            border-left: 4px solid #10B981;
+        }
+        .pulse-animation {
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+        .spinner {
+            display: none;
+        }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <div id="vanta-bg" class="fixed inset-0 -z-10 opacity-20"></div>
+    
+    <header class="gradient-bg text-white shadow-lg sticky top-0 z-10">
+        <div class="container mx-auto px-4 py-4">
+            <div class="flex justify-between items-center">
+                <div class="flex items-center space-x-2">
+                    <i data-feather="check-square" class="w-8 h-8"></i>
+                    <h1 class="text-2xl font-bold">Smart Doc Checker</h1>
+                </div>
+                <div id="usage-container" class="bg-white bg-opacity-20 px-3 py-1 rounded-full items-center" style="display: none;">
+                    <i data-feather="activity" class="w-4 h-4 inline-block mr-2"></i>
+                    <span id="usageCount">0</span> analyses performed.
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main class="container mx-auto px-4 py-8">
+        <section class="mb-16 text-center" data-aos="fade-up">
+            <h2 class="text-4xl font-bold text-gray-800 mb-4">Find Document Conflicts Automatically</h2>
+            <p class="text-xl text-gray-600 max-w-3xl mx-auto">
+                Upload multiple documents and let our AI detect contradictions, overlaps, and inconsistencies in seconds.
+            </p>
+        </section>
+
+        <section class="mb-16 bg-white rounded-xl shadow-lg overflow-hidden" data-aos="zoom-in">
+            <div class="p-8">
+                <h2 class="text-2xl font-bold text-gray-800 mb-6">Upload Your Documents</h2>
+                <form id="uploadForm" enctype="multipart/form-data">
+                    <div class="file-upload rounded-lg p-12 text-center cursor-pointer mb-6" id="dropzone">
+                        <div class="mx-auto w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mb-4">
+                            <i data-feather="upload" class="w-8 h-8 text-blue-600"></i>
+                        </div>
+                        <h3 class="text-lg font-medium text-gray-700 mb-1">Drag & drop files here</h3>
+                        <p class="text-gray-500 mb-4">or click to browse</p>
+                        <input type="file" id="file-input" name="files" class="hidden" multiple accept=".pdf,.docx">
+                        <button type="button" id="browse-btn" class="bg-blue-600 text-white px-6 py-2 rounded-lg font-medium hover:bg-blue-700 transition">
+                            Select Files
+                        </button>
+                    </div>
+                    <div class="flex flex-wrap gap-3 mb-6" id="file-list">
+                        <!-- Files will be listed here -->
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <div class="text-sm text-gray-500">
+                            <span id="file-count">0</span> of 3 files selected
+                        </div>
+                        <button id="analyze-btn" type="submit" class="bg-blue-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center" disabled>
+                           <span id="analyze-btn-text">Analyze Documents</span>
+                           <div id="spinner" class="animate-spin rounded-full h-5 w-5 border-b-2 border-white ml-2" style="display: none;"></div>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </section>
+
+        <section class="mb-16" id="results-section" style="display: none;" data-aos="fade-up">
+             <h2 class="text-2xl font-bold text-gray-800 mb-6">Analysis Report</h2>
+             <div id="reportContent" class="bg-white p-6 rounded-lg shadow-md text-gray-700"></div>
+        </section>
+        
+        <div id="errorAlert" class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg relative mt-6" role="alert" style="display: none;"></div>
+
+        <!-- Pathway Demo Section -->
+        <section class="mb-16 bg-white rounded-xl shadow-lg overflow-hidden" data-aos="fade-up">
+            <div class="p-8">
+                <div class="flex justify-between items-center mb-6">
+                    <h2 class="text-2xl font-bold text-gray-800">Monitor External Policy Updates</h2>
+                    <div class="flex items-center space-x-2">
+                        <div class="h-2 w-2 bg-green-500 rounded-full pulse-animation"></div>
+                        <span class="text-sm text-gray-600">Live monitoring</span>
+                    </div>
+                </div>
+                
+                <div class="mb-6">
+                    <label class="block text-gray-700 font-medium mb-2" for="policy-url">Policy URL to Monitor (Pathway Demo)</label>
+                    <div class="flex">
+                        <input type="url" id="policy-url" class="flex-grow border border-gray-300 rounded-l-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="https://example.com/policies">
+                        <button class="bg-blue-600 text-white px-6 py-2 rounded-r-lg font-medium hover:bg-blue-700 transition">
+                            Start Monitoring
+                        </button>
+                    </div>
+                </div>
+
+                <div class="border border-gray-200 rounded-lg overflow-hidden">
+                    <div class="bg-gray-50 px-4 py-3 border-b border-gray-200 flex justify-between items-center">
+                        <h3 class="font-medium">Recent Changes Detected</h3>
+                        <span class="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">Powered by Pathway</span>
+                    </div>
+                    <div class="divide-y divide-gray-200">
+                        <div class="p-4 hover:bg-gray-50 transition">
+                            <div class="flex justify-between mb-1">
+                                <span class="font-medium">Attendance Policy Updated</span>
+                                <span class="text-xs text-gray-500">2 hours ago</span>
+                            </div>
+                            <p class="text-sm text-gray-600">Changed from "minimum 65%" to "minimum 75% attendance required"</p>
+                        </div>
+                        <div class="p-4 hover:bg-gray-50 transition">
+                            <div class="flex justify-between mb-1">
+                                <span class="font-medium">Submission Policy Added</span>
+                                <span class="text-xs text-gray-500">1 day ago</span>
+                            </div>
+                            <p class="text-sm text-gray-600">Added new section about late submissions penalty</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer class="bg-gray-800 text-white py-12">
+        <div class="container mx-auto px-4 text-center text-gray-400">
+            <p>© 2025 Smart Doc Checker. All rights reserved.</p>
+        </div>
+    </footer>
+
+    <script>
+        AOS.init();
+        feather.replace();
+
+        const dropzone = document.getElementById('dropzone');
+        const fileInput = document.getElementById('file-input');
+        const browseBtn = document.getElementById('browse-btn');
+        const fileList = document.getElementById('file-list');
+        const fileCount = document.getElementById('file-count');
+        const analyzeBtn = document.getElementById('analyze-btn');
+        const analyzeBtnText = document.getElementById('analyze-btn-text');
+        const spinner = document.getElementById('spinner');
+        const uploadForm = document.getElementById('uploadForm');
+        
+        const resultsSection = document.getElementById('results-section');
+        const reportContent = document.getElementById('reportContent');
+        const errorAlert = document.getElementById('errorAlert');
+        const usageContainer = document.getElementById('usage-container');
+        const usageCount = document.getElementById('usageCount');
+
+        let files = [];
+
+        // Event Listeners
+        browseBtn.addEventListener('click', () => fileInput.click());
+        dropzone.addEventListener('click', () => fileInput.click());
+        fileInput.addEventListener('change', () => handleFiles(fileInput.files));
+        
+        dropzone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropzone.classList.add('dragover');
+        });
+
+        dropzone.addEventListener('dragleave', () => {
+            dropzone.classList.remove('dragover');
+        });
+
+        dropzone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropzone.classList.remove('dragover');
+            handleFiles(e.dataTransfer.files);
+        });
+
+        function handleFiles(newFiles) {
+            if (files.length + newFiles.length > 3) {
+                showError('You can upload a maximum of 3 files');
+                return;
+            }
+            
+            // Validate file types
+            for (let file of newFiles) {
+                if (!file.name.toLowerCase().endsWith('.pdf') && !file.name.toLowerCase().endsWith('.docx')) {
+                    showError('Please only upload PDF or DOCX files.');
+                    return;
+                }
+            }
+            
+            files.push(...newFiles);
+            updateFileList();
+        }
+
+        function updateFileList() {
+            fileList.innerHTML = '';
+            files.forEach((file, index) => {
+                const fileElement = document.createElement('div');
+                fileElement.className = 'bg-gray-100 px-4 py-2 rounded-lg flex items-center text-gray-800';
+                fileElement.innerHTML = `
+                    <i data-feather="file" class="w-4 h-4 mr-2 text-gray-500"></i>
+                    <span class="text-sm truncate max-w-xs">${file.name}</span>
+                    <button type="button" class="ml-auto text-gray-500 hover:text-red-500 remove-file-btn" data-index="${index}">
+                        <i data-feather="x" class="w-4 h-4"></i>
+                    </button>
+                `;
+                fileList.appendChild(fileElement);
+            });
+
+            fileCount.textContent = files.length;
+            analyzeBtn.disabled = files.length < 2;
+            feather.replace();
+            
+            // Add event listeners to new remove buttons
+            document.querySelectorAll('.remove-file-btn').forEach(button => {
+                button.addEventListener('click', (e) => {
+                    const index = parseInt(e.currentTarget.getAttribute('data-index'));
+                    files.splice(index, 1);
+                    updateFileList();
+                });
+            });
+        }
+        
+        uploadForm.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            // Optional: Add validation here
+            if (files.length < 2) {
+                showError('Please upload at least 2 documents.');
+                return;
+            }
+            
+            setLoading(true);
+
+            const formData = new FormData();
+            // Append files with specific names for Flask
+            files.forEach((file, index) => {
+                let fieldName;
+                if (index === 0) fieldName = 'file1';
+                else if (index === 1) fieldName = 'file2';
+                else fieldName = 'file3';
+
+                formData.append(fieldName, file);
+            });
+
+            try {
+                const response = await fetch('/analyze', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await response.json();
+
+                if (response.ok) {
+                    showReport(data.report, data.usage_count);
+                } else {
+                    showError(data.error);
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                showError('A network error occurred. Please check your connection and try again.');
+            } finally {
+                setLoading(false);
+            }
+        });
+        
+        function setLoading(isLoading) {
+            spinner.style.display = isLoading ? 'block' : 'none';
+            analyzeBtnText.textContent = isLoading ? 'Analyzing...' : 'Analyze Documents';
+            analyzeBtn.disabled = isLoading;
+            
+            // Clear previous results/errors when starting a new analysis
+            if (isLoading) {
+                resultsSection.style.display = 'none';
+                errorAlert.style.display = 'none';
+            }
+        }
+
+        function showReport(report, count) {
+            resultsSection.style.display = 'block';
+            reportContent.innerHTML = report.replace(/\n/g, '<br>');
+            usageContainer.style.display = 'flex';
+            usageCount.textContent = count;
+            errorAlert.style.display = 'none';
+            resultsSection.scrollIntoView({ behavior: 'smooth' });
+        }
+
+        function showError(message) {
+            errorAlert.textContent = message;
+            errorAlert.style.display = 'block';
+            resultsSection.style.display = 'none';
+        }
+
+    </script>
+</body>
+</html>

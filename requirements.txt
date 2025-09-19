@@ -1,0 +1,11 @@
+flask
+openai
+python-dotenv
+PyPDF
+python-docx
+google-generativeai
+python-magic-bin
+Flask-Limiter
+Flask-Cors
+Werkzeug
+gunicorn
